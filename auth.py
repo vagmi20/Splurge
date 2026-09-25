@@ -24,8 +24,12 @@ USERS_FILE = os.path.join(DATA_DIR, "users.json")
 USERNAME_RE = re.compile(r"^[a-z0-9_-]{2,32}$")
 RESERVED_USERNAMES = {"family"}  # the shared book isn't a person; everyone already has access
 
+# PBKDF2 rather than werkzeug's default scrypt: Apple's built-in Python lacks
+# scrypt, and this keeps data/users.json portable between any two machines.
+HASH_METHOD = "pbkdf2:sha256:600000"
+
 # Used to spend the same time on unknown usernames as on wrong passwords.
-_DUMMY_HASH = generate_password_hash("not-a-real-password")
+_DUMMY_HASH = generate_password_hash("not-a-real-password", method=HASH_METHOD)
 
 
 def load_users() -> dict:
@@ -79,4 +83,4 @@ def user_for_token(token: str):
 
 
 def set_password(users: dict, username: str, password: str) -> None:
-    users[username]["password_hash"] = generate_password_hash(password)
+    users[username]["password_hash"] = generate_password_hash(password, method=HASH_METHOD)

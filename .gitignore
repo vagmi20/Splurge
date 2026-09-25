@@ -11,11 +11,20 @@ finance_data*.json
 *.json.tmp
 *.tmp
 
-# Spreadsheets and exports (contain the same data)
+# Spreadsheets, bank exports, databases, backups (contain the same data)
 *.xlsx
 *.xls
 *.csv
 *.numbers
+*.ofx
+*.qfx
+*.qif
+*.db
+*.sqlite
+*.sqlite3
+backups/
+*.bak
+*.log
 
 # Receipts / statements someone might drop into the folder
 receipts/
@@ -41,6 +50,15 @@ __pycache__/
 *.py[cod]
 venv/
 .venv/
+env/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # OS / editor
 .DS_Store

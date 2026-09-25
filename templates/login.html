@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f1117">
+  <title>Sign in · Finance</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-page">
+  <form class="auth-card" method="post">
+    <div class="logo">
+      <span class="logo-icon">💰</span>
+      <div>
+        <div class="logo-title">Finance</div>
+        <div class="logo-sub">Family Dashboard</div>
+      </div>
+    </div>
+
+    {% if no_users %}
+      <div class="auth-note">
+        No accounts yet. On the host machine run:<br>
+        <code>python manage_users.py add &lt;username&gt;</code>
+      </div>
+    {% endif %}
+    {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
+
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button class="btn btn-accent" type="submit">Sign in</button>
+  </form>
+</body>
+</html>

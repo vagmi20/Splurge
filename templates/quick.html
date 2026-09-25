@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Expense">
+  <title>Quick Add · Finance</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-page quick-page">
+  <div class="auth-card">
+    <div class="quick-head">
+      <div class="logo-title">Log Expense</div>
+      <span class="muted">{{ display_name }}</span>
+    </div>
+
+    <div class="book-toggle" role="group" aria-label="Book">
+      <button type="button" data-book="personal" class="active">Personal</button>
+      <button type="button" data-book="family">Family</button>
+    </div>
+
+    <form id="quick-form">
+      <label for="q-amount">Amount</label>
+      <input id="q-amount" class="quick-amount" type="text" inputmode="decimal" placeholder="0.00" required autofocus>
+      <label for="q-cat">Category</label>
+      <select id="q-cat"></select>
+      <label for="q-notes">Notes</label>
+      <input id="q-notes" placeholder="e.g. Chipotle">
+      <label for="q-date">Date</label>
+      <input id="q-date" type="date">
+      <button class="btn btn-red" type="submit" id="q-submit">Add Expense</button>
+    </form>
+    <div id="q-status" class="quick-status" role="status"></div>
+
+    <div class="section-title" style="margin-top:20px">Recent</div>
+    <div id="q-recent"></div>
+
+    <div class="quick-foot"><a href="/">Open full dashboard →</a></div>
+  </div>
+
+<script>
+'use strict';
+let info = null;
+let book = localStorage.getItem('quickBook') === 'family' ? 'family' : 'personal';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function load() {
+  const r = await fetch('/api/quick-info');
+  if (r.status === 401) { location.href = '/login?next=/quick'; return; }
+  info = await r.json();
+  if (!$('q-date').value) $('q-date').value = info.today;
+  render();
+}
+
+function render() {
+  document.querySelectorAll('.book-toggle button').forEach(b => b.classList.toggle('active', b.dataset.book === book));
+  const b = info.books[book];
+  const cur = $('q-cat').value;
+  $('q-cat').innerHTML = b.categories.map(c => `<option>${esc(c)}</option>`).join('');
+  if (b.categories.includes(cur)) $('q-cat').value = cur;
+  $('q-recent').innerHTML = b.recent.length ? b.recent.map(e => `
+    <div class="quick-row">
+      <div><div>${esc(e.category)}${e.notes ? ' · ' + esc(e.notes) : ''}</div>
+      <div class="muted" style="font-size:12px">${esc(e.date)}${book === 'family' && e.added_by ? ' · ' + esc(e.added_by) : ''}</div></div>
+      <div style="color:var(--red)">$${Number(e.amount).toFixed(2)}</div>
+    </div>`).join('') : '<div class="muted">Nothing yet.</div>';
+}
+
+document.querySelectorAll('.book-toggle button').forEach(btn => btn.addEventListener('click', () => {
+  book = btn.dataset.book;
+  try { localStorage.setItem('quickBook', book); } catch (e) {}
+  render();
+}));
+
+$('quick-form').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  $('q-submit').disabled = true;
+  const status = $('q-status');
+  try {
+    const r = await fetch('/api/quick-add', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ book, amount: $('q-amount').value, category: $('q-cat').value,
+                             notes: $('q-notes').value, date: $('q-date').value }),
+    });
+    if (r.status === 401) { location.href = '/login?next=/quick'; return; }
+    const res = await r.json();
+    status.className = 'quick-status ' + (res.ok ? 'ok' : 'err');
+    status.textContent = res.ok ? '✓ ' + res.message : res.error;
+    if (res.ok) { $('q-amount').value = ''; $('q-notes').value = ''; await load(); }
+  } catch (e) {
+    status.className = 'quick-status err';
+    status.textContent = 'Could not reach the server.';
+  } finally {
+    $('q-submit').disabled = false;
+  }
+});
+
+load();
+</script>
+</body>
+</html>

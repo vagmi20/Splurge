@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finance Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ── -->
+  <nav id="sidebar">
+    <div class="logo">
+      <span class="logo-icon">💰</span>
+      <div>
+        <div class="logo-title">Finance</div>
+        <div class="logo-sub" id="book-label">{{ 'Family' if book == 'family' else display_name }}</div>
+      </div>
+    </div>
+    <div class="book-toggle" role="group" aria-label="Which book to show">
+      <button type="button" data-book="personal" class="{{ 'active' if book != 'family' }}" onclick="switchBook('personal')">Personal</button>
+      <button type="button" data-book="family" class="{{ 'active' if book == 'family' }}" onclick="switchBook('family')">Family</button>
+    </div>
+    <div class="nav-items">
+      <button class="nav-btn active" data-tab="overview">📊 Overview</button>
+      <button class="nav-btn" data-tab="paychecks">💵 Paychecks</button>
+      <button class="nav-btn" data-tab="investments">📈 Investments</button>
+      <button class="nav-btn" data-tab="spending">🧾 Spending</button>
+      <button class="nav-btn" data-tab="subscriptions">🔄 Subscriptions</button>
+      <button class="nav-btn" data-tab="goals">🎯 Goals</button>
+      <button class="nav-btn" data-tab="vacations">✈️ Vacations</button>
+      <button class="nav-btn" data-tab="history">📅 History</button>
+      <button class="nav-btn" data-tab="split">🧾 Split</button>
+    </div>
+    <div class="sidebar-footer">
+      <button class="btn btn-outline btn-sm" onclick="openImportModal()">⬆ Import Excel</button>
+      <button class="btn btn-outline btn-sm" onclick="exportData()">⬇ Export Excel</button>
+      <div class="account-row">
+        <span>{{ display_name }}</span>
+        <form method="post" action="/logout"><button class="link-btn" type="submit">Sign out</button></form>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Main content ── -->
+  <main id="content">
+
+    <!-- Overview -->
+    <div id="tab-overview" class="tab-panel active">
+      <div class="page-header">
+        <h1>Overview</h1>
+        <span class="muted" id="overview-date"></span>
+      </div>
+      <div id="overview-cards" class="cards-row"></div>
+      <div class="two-col">
+        <div>
+          <div class="section-title">Spending by Category</div>
+          <div class="chart-box"><canvas id="chart-category"></canvas></div>
+        </div>
+        <div>
+          <div class="section-title">Monthly Spending Trend</div>
+          <div class="chart-box"><canvas id="chart-trend"></canvas></div>
+        </div>
+      </div>
+      <div id="overview-goals-strip"></div>
+      <div id="overview-budget"></div>
+    </div>
+
+    <!-- Paychecks -->
+    <div id="tab-paychecks" class="tab-panel">
+      <div class="page-header">
+        <h1>Paychecks</h1>
+        <button class="btn btn-accent" onclick="openModal('modal-paycheck')">+ Add Paycheck</button>
+      </div>
+      <p class="muted">Manage your recurring income sources</p>
+      <div id="paycheck-list"></div>
+    </div>
+
+    <!-- Investments -->
+    <div id="tab-investments" class="tab-panel">
+      <div class="page-header">
+        <h1>Investments</h1>
+        <button class="btn btn-yellow" onclick="openModal('modal-investment')">+ Add Investment</button>
+      </div>
+      <p class="muted">Track your portfolio and monthly contributions</p>
+      <div id="investment-summary" class="cards-row"></div>
+      <div id="investment-list"></div>
+
+      <!-- Projections -->
+      <div style="margin-top:36px">
+        <div class="section-title">Portfolio Projections</div>
+        <p class="muted" style="font-size:12px;margin-bottom:16px">
+          Compound growth using per-account return assumptions.
+          ETF-heavy accounts (VOO / BKLC / QQQ mix) use <strong style="color:var(--yellow)">10% annual</strong>.
+          Edit any account to set a custom rate. Monthly contributions assumed constant.
+        </p>
+        <div id="proj-horizon-btns" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap"></div>
+        <div class="chart-box" style="height:360px"><canvas id="chart-projections"></canvas></div>
+        <div id="projections-milestones" style="margin-top:20px"></div>
+      </div>
+    </div>
+
+    <!-- Spending -->
+    <div id="tab-spending" class="tab-panel">
+      <div class="page-header">
+        <h1>Spending</h1>
+        <button class="btn btn-red" onclick="newSpending()">+ Log Expense</button>
+      </div>
+      <p class="muted">Track where your money is going</p>
+      <div id="spending-summary" class="cards-row"></div>
+      <div class="filter-bar">
+        <label>Show: </label>
+        <select id="spend-range" onchange="renderSpending()">
+          <option value="month">This Month</option>
+          <option value="upcoming">Upcoming</option>
+          <option value="all">All Time</option>
+        </select>
+        <label style="margin-left:16px">Filter: </label>
+        <select id="spend-cat-filter" onchange="renderSpending()"><option value="">All Categories</option></select>
+        <label style="margin-left:16px">Sort: </label>
+        <select id="spend-sort" onchange="renderSpending()">
+          <option value="date-desc">Newest First</option>
+          <option value="date-asc">Oldest First</option>
+          <option value="amount-desc">Highest Amount</option>
+        </select>
+      </div>
+      <div id="spending-list"></div>
+    </div>
+
+    <!-- Subscriptions -->
+    <div id="tab-subscriptions" class="tab-panel">
+      <div class="page-header">
+        <h1>Subscriptions</h1>
+        <button class="btn btn-green" onclick="openModal('modal-subscription')">+ Add Subscription</button>
+      </div>
+      <p class="muted">Track your recurring monthly subscriptions</p>
+      <div id="subscription-summary" class="cards-row"></div>
+      <div id="subscription-list"></div>
+    </div>
+
+    <!-- Goals -->
+    <div id="tab-goals" class="tab-panel">
+      <div class="page-header">
+        <h1>Savings Goals</h1>
+        <button class="btn btn-purple" onclick="openModal('modal-goal')">+ Add Goal</button>
+      </div>
+      <p class="muted">Track long-term savings: car, home, medical fund, and more</p>
+      <div id="goals-summary" class="cards-row"></div>
+      <div id="goals-list"></div>
+    </div>
+
+    <!-- Vacations -->
+    <div id="tab-vacations" class="tab-panel">
+      <div class="page-header">
+        <h1>Vacations</h1>
+        <button class="btn" style="background:#f97316;color:#fff" onclick="openVacationModal()">+ Add Vacation</button>
+      </div>
+      <p class="muted">Track spending for specific trips — any expense logged within a vacation's dates is automatically counted</p>
+      <div id="vacation-summary" class="cards-row"></div>
+      <div id="vacation-list"></div>
+    </div>
+
+    <!-- History -->
+    <div id="tab-history" class="tab-panel">
+      <div class="page-header">
+        <h1>History &amp; Analytics</h1>
+      </div>
+      <p class="muted">Financial history by date range, plus year-over-year tracking</p>
+
+      <!-- Liquid Reserves (Money Market) -->
+      <div id="liquid-reserves-section"></div>
+
+      <!-- Yearly tracking -->
+      <div class="section-title" style="margin-top:32px">Year-over-Year Summary</div>
+      <div id="yearly-table"></div>
+
+      <!-- Date range -->
+      <div class="card" style="margin-top:24px">
+        <div class="section-title" style="padding:16px 16px 8px">Date Range Analysis</div>
+        <div class="range-btns">
+          <button class="btn btn-outline btn-sm" onclick="setRange('month')">This Month</button>
+          <button class="btn btn-outline btn-sm" onclick="setRange(90)">Last 3 Months</button>
+          <button class="btn btn-outline btn-sm" onclick="setRange('year')">This Year</button>
+          <button class="btn btn-outline btn-sm" onclick="setRange(9999)">All Time</button>
+        </div>
+        <div class="date-row">
+          <label>From</label>
+          <input type="date" id="hist-from">
+          <label>To</label>
+          <input type="date" id="hist-to">
+          <button class="btn btn-accent btn-sm" onclick="renderHistory()">Apply</button>
+        </div>
+      </div>
+      <div id="history-summary" class="cards-row" style="margin-top:16px"></div>
+      <div id="history-breakdown"></div>
+    </div>
+
+    <!-- Split Receipt -->
+    <div id="tab-split" class="tab-panel">
+      <!-- ═══ Persistent Trip Splits (saved) ═══ -->
+      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <h1 style="margin:0">🏝️ Trip Splits</h1>
+        <button class="btn btn-accent btn-sm" onclick="tripSplitNew()">+ New Trip Split</button>
+      </div>
+      <p class="muted">Track who paid for shared trip costs (Ubers, meals) and settle up. Saved automatically.</p>
+      <div id="trip-splits-root"></div>
+
+      <div style="height:1px;background:var(--border);margin:32px 0 24px"></div>
+
+      <!-- ═══ One-off Receipt Splitter (ephemeral) ═══ -->
+      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <h1 style="margin:0">Receipt Splitter</h1>
+        <button class="btn btn-outline btn-sm" onclick="splitClearAll()">Clear All</button>
+      </div>
+      <p class="muted">Upload a receipt photo to itemize and split costs with friends (not saved)</p>
+
+      <!-- Upload zone -->
+      <div id="split-upload-zone" class="split-upload-zone" onclick="document.getElementById('split-file-input').click()" ondragover="event.preventDefault()" ondrop="splitHandleDrop(event)">
+        <div id="split-upload-text">
+          <div style="font-size:36px;margin-bottom:8px">📷</div>
+          <div style="font-size:15px;font-weight:600;color:var(--fg)">Click or drag a receipt photo</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">JPG, PNG, HEIC supported</div>
+        </div>
+        <img id="split-preview-img" style="display:none;max-height:200px;border-radius:8px;object-fit:contain">
+      </div>
+      <input type="file" id="split-file-input" accept="image/*" style="display:none" onchange="splitFileChosen(this)">
+      <button class="btn btn-accent" style="margin-top:10px" id="split-parse-btn" onclick="splitParseReceipt()" disabled>Parse Receipt</button>
+      <span id="split-parse-status" style="font-size:12px;color:var(--muted);margin-left:10px"></span>
+
+      <!-- People -->
+      <div class="card" style="margin-top:24px" id="split-people-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="section-title" style="margin:0">People</div>
+          <button class="btn btn-outline btn-sm" onclick="splitAddPerson()">+ Add Person</button>
+        </div>
+        <div id="split-people-list" style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="muted" style="font-size:13px">Add people to split with</span>
+        </div>
+      </div>
+
+      <!-- Items -->
+      <div class="card" style="margin-top:16px" id="split-items-card">
+        <div class="section-title" style="margin-bottom:12px">Items</div>
+        <div id="split-items-list">
+          <span class="muted" style="font-size:13px">Parse a receipt or add items manually</span>
+        </div>
+        <button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="splitAddItem()">+ Add Item Manually</button>
+      </div>
+
+      <!-- Tax / Tip -->
+      <div class="card" style="margin-top:16px">
+        <div class="section-title" style="margin-bottom:12px">Tax &amp; Tip</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:160px">
+            <label style="font-size:12px;color:var(--muted)">Tax ($)</label>
+            <input type="number" id="split-tax" placeholder="0.00" step="0.01" min="0" style="width:100%;margin-top:4px" oninput="splitRecalc()">
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label style="font-size:12px;color:var(--muted)">Tip ($)</label>
+            <input type="number" id="split-tip" placeholder="0.00" step="0.01" min="0" style="width:100%;margin-top:4px" oninput="splitRecalc()">
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label style="font-size:12px;color:var(--muted)">Quick Tip %</label>
+            <div style="display:flex;gap:6px;margin-top:4px">
+              <button class="btn btn-outline btn-sm" onclick="splitQuickTip(18)">18%</button>
+              <button class="btn btn-outline btn-sm" onclick="splitQuickTip(20)">20%</button>
+              <button class="btn btn-outline btn-sm" onclick="splitQuickTip(25)">25%</button>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="split-tip-proportional" oninput="splitRecalc()" style="accent-color:var(--accent)">
+          <label for="split-tip-proportional" style="font-size:12px;color:var(--muted)">Split tax &amp; tip proportionally (by item subtotal); otherwise split evenly</label>
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div class="card" style="margin-top:16px" id="split-summary-card">
+        <div class="section-title" style="margin-bottom:12px">Summary</div>
+        <div id="split-summary-content">
+          <span class="muted" style="font-size:13px">Add people and items to see the split</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ══════════ Modals ══════════ -->
+
+<!-- Paycheck Modal -->
+<div id="modal-paycheck" class="modal-overlay" onclick="closeModalOutside(event,'modal-paycheck')">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Paycheck</span><button class="modal-close" onclick="closeModal('modal-paycheck')">✕</button></div>
+    <input type="hidden" id="pc-id">
+    <label>Name / Employer</label>
+    <input type="text" id="pc-name" placeholder="e.g. Employer name">
+    <label>Amount (per paycheck)</label>
+    <input type="number" id="pc-amount" placeholder="0.00" step="0.01">
+    <label>Frequency</label>
+    <select id="pc-freq">
+      <option value="one-time">One-Time (bonus / freelance)</option>
+      <option value="weekly">Weekly</option>
+      <option value="biweekly" selected>Biweekly</option>
+      <option value="semimonthly">Semi-monthly</option>
+      <option value="monthly">Monthly</option>
+      <option value="quarterly">Quarterly</option>
+      <option value="annually">Annually</option>
+    </select>
+    <label>Next Pay Date</label>
+    <input type="date" id="pc-date">
+    <label>Notes (optional)</label>
+    <input type="text" id="pc-notes">
+    <button class="btn btn-accent btn-full" onclick="savePaycheck()">Save</button>
+  </div>
+</div>
+
+<!-- Investment Modal -->
+<div id="modal-investment" class="modal-overlay" onclick="closeModalOutside(event,'modal-investment')">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Investment</span><button class="modal-close" onclick="closeModal('modal-investment')">✕</button></div>
+    <input type="hidden" id="inv-id">
+    <label>Name</label>
+    <input type="text" id="inv-name" placeholder="e.g. Fidelity Roth IRA">
+    <label>Type</label>
+    <select id="inv-type">
+      <option>401(k)</option><option>Roth IRA</option><option>Traditional IRA</option>
+      <option>Brokerage</option><option>HSA</option><option>529</option>
+      <option>Crypto</option><option>Real Estate</option><option>Other</option>
+    </select>
+    <label>Liquidity</label>
+    <select id="inv-liquidity">
+      <option value="soft">💧 Soft — can withdraw anytime</option>
+      <option value="locked">🔒 Locked — restricted for a period</option>
+    </select>
+    <div id="inv-lock-row" style="display:none">
+      <label>Locked Until (optional)</label>
+      <input type="date" id="inv-lock-until">
+      <div style="font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:4px">e.g. a CD's maturity date — leave blank if indefinite (401k / IRA / HSA)</div>
+    </div>
+    <label>Current Value ($) <span style="font-size:11px;color:var(--muted);font-weight:400">— supports math, e.g. 5.67+2.00</span></label>
+    <input type="text" id="inv-value" placeholder="0.00 or 5.67+2.00" inputmode="decimal" autocomplete="off">
+    <div id="inv-value-preview" style="display:none;font-size:12px;color:var(--green);margin-top:-10px;margin-bottom:4px"></div>
+    <label>Monthly Contribution ($)</label>
+    <input type="text" id="inv-contrib" placeholder="0.00 or 100+50" inputmode="decimal" autocomplete="off">
+    <div id="inv-contrib-preview" style="display:none;font-size:12px;color:var(--green);margin-top:-10px;margin-bottom:4px"></div>
+    <label>Expected Annual Return (%)</label>
+    <input type="number" id="inv-ror" placeholder="10.0" step="0.1" min="0" max="50">
+    <div style="font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:4px">
+      ETFs (VOO/QQQ/BKLC) ≈ 10% · HSA ≈ 6% · Money Market / CD: enter your APY
+    </div>
+    <div id="inv-date-row" style="display:none">
+      <label>Date Purchased / Added</label>
+      <input type="date" id="inv-date-added">
+      <div style="font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:4px">Used to auto-compound the value monthly at your RoR</div>
+    </div>
+    <label>Notes (optional)</label>
+    <input type="text" id="inv-notes">
+    <button class="btn btn-yellow btn-full" onclick="saveInvestment()">Save</button>
+  </div>
+</div>
+
+<!-- Spending Modal -->
+<div id="modal-spending" class="modal-overlay" onclick="closeModalOutside(event,'modal-spending')">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Expense</span><button class="modal-close" onclick="closeModal('modal-spending')">✕</button></div>
+    <input type="hidden" id="sp-id">
+    <label>Category</label>
+    <select id="sp-cat"></select>
+    <label>Amount ($) <span style="font-size:11px;color:var(--muted);font-weight:400">— supports math, e.g. 9.51+20</span></label>
+    <input type="text" id="sp-amount" placeholder="0.00 or 9.51+20" inputmode="decimal" autocomplete="off">
+    <div id="sp-amount-preview" style="display:none;font-size:12px;color:var(--green);margin-top:-10px;margin-bottom:4px"></div>
+    <label>Date</label>
+    <input type="date" id="sp-date">
+    <div id="sp-vacation-hint" style="display:none;font-size:12px;color:#f97316;margin-top:2px;padding:6px 10px;background:rgba(249,115,22,.08);border-radius:6px;border:1px solid rgba(249,115,22,.25)">
+      ✈️ Tracked under vacation: <strong id="sp-vacation-name"></strong>
+    </div>
+    <label>Notes (optional)</label>
+    <input type="text" id="sp-notes">
+    <div class="checkbox-row">
+      <input type="checkbox" id="sp-combined">
+      <label for="sp-combined">Combined expense (multiple items)</label>
+    </div>
+    <div id="sp-count-row" style="display:none">
+      <label>Number of items</label>
+      <input type="number" id="sp-count" value="1" min="1">
+    </div>
+    <button class="btn btn-red btn-full" onclick="saveSpending()">Save</button>
+  </div>
+</div>
+
+<!-- Subscription Modal -->
+<div id="modal-subscription" class="modal-overlay" onclick="closeModalOutside(event,'modal-subscription')">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Subscription</span><button class="modal-close" onclick="closeModal('modal-subscription')">✕</button></div>
+    <input type="hidden" id="sub-id">
+    <label>Service Name</label>
+    <input type="text" id="sub-name" placeholder="e.g. Spotify">
+    <label>Monthly Cost ($)</label>
+    <input type="number" id="sub-amount" placeholder="0.00" step="0.01">
+    <label>Category</label>
+    <select id="sub-cat">
+      <option>Gym</option><option>Music/Audio</option><option>Streaming</option>
+      <option>News/Reading</option><option>Software</option><option>Entertainment</option><option>Other</option>
+    </select>
+    <label>Notes (optional)</label>
+    <input type="text" id="sub-notes">
+    <div class="checkbox-row">
+      <input type="checkbox" id="sub-active" checked>
+      <label for="sub-active">Active</label>
+    </div>
+    <button class="btn btn-green btn-full" onclick="saveSubscription()">Save</button>
+  </div>
+</div>
+
+<!-- Goal Modal -->
+<div id="modal-goal" class="modal-overlay" onclick="closeModalOutside(event,'modal-goal')">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title" style="color:var(--purple)">Savings Goal</span><button class="modal-close" onclick="closeModal('modal-goal')">✕</button></div>
+    <input type="hidden" id="goal-id">
+    <label>Goal Name</label>
+    <input type="text" id="goal-name" placeholder="e.g. New Car, Down Payment, Emergency Fund">
+    <label>Category</label>
+    <select id="goal-cat">
+      <option value="vehicle">🚗 Vehicle</option>
+      <option value="home">🏠 Home / Down Payment</option>
+      <option value="emergency">🛡 Emergency Fund</option>
+      <option value="medical">🏥 Medical Fund</option>
+      <option value="vacation">✈️ Vacation</option>
+      <option value="education">🎓 Education</option>
+      <option value="other">📦 Other</option>
+    </select>
+    <label>Target Amount ($)</label>
+    <input type="number" id="goal-target" placeholder="25000" step="100">
+    <label>Start Date <span style="font-size:11px;color:var(--muted);font-weight:400">— when you began contributing</span></label>
+    <input type="date" id="goal-start">
+    <div style="font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:4px">If set, saved amount is auto-calculated from your monthly contribution × months elapsed</div>
+    <label>Initial Amount Already Saved ($) <span style="font-size:11px;color:var(--muted);font-weight:400">— at start date, or right now if no start date</span></label>
+    <input type="number" id="goal-saved" placeholder="0" step="100">
+    <label>Monthly Contribution Target ($)</label>
+    <input type="number" id="goal-monthly" placeholder="500" step="50">
+    <label>Funding Type</label>
+    <select id="goal-priority">
+      <option value="hard">🟢 Hard — guaranteed fixed amount every month</option>
+      <option value="soft">🟣 Soft — funded from month-end leftovers, up to target</option>
+    </select>
+    <div style="font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:4px">Hard goals are committed upfront. Soft goals receive whatever Needs + Savings is left at month-end (capped at target).</div>
+    <label>Notes (optional)</label>
+    <input type="text" id="goal-notes">
+    <button class="btn btn-purple btn-full" onclick="saveGoal()">Save Goal</button>
+  </div>
+</div>
+
+<!-- Vacation Modal -->
+<div id="modal-vacation" class="modal-overlay" onclick="closeModalOutside(event,'modal-vacation')">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" style="color:#f97316">✈️ Vacation</span>
+      <button class="modal-close" onclick="closeModal('modal-vacation')">✕</button>
+    </div>
+    <input type="hidden" id="vac-id">
+    <label>Vacation Name</label>
+    <input type="text" id="vac-name" placeholder="e.g. Beach Trip 2026">
+    <label>Start Date</label>
+    <input type="date" id="vac-start">
+    <label>End Date</label>
+    <input type="date" id="vac-end">
+    <label>Budget ($) <span style="font-size:11px;color:var(--muted);font-weight:400">— total planned spending for this trip</span></label>
+    <input type="number" id="vac-budget" placeholder="0.00" step="0.01" min="0">
+    <label>Notes (optional)</label>
+    <input type="text" id="vac-notes" placeholder="e.g. flights included, hotel separate…">
+    <button class="btn btn-full" style="background:#f97316;color:#fff;margin-top:8px" onclick="saveVacation()">Save Vacation</button>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div id="modal-import" class="modal-overlay" onclick="closeModalOutside(event,'modal-import')">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Import Excel</span>
+      <button class="modal-close" onclick="closeModal('modal-import')">✕</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Select a <strong style="color:var(--text)">.xlsx file</strong> previously exported from this app.
+      It must contain sheets named <code style="background:var(--card);padding:1px 5px;border-radius:4px">Paychecks</code>,
+      <code style="background:var(--card);padding:1px 5px;border-radius:4px">Investments</code>, or
+      <code style="background:var(--card);padding:1px 5px;border-radius:4px">Spending</code>.
+    </p>
+    <label>Excel File</label>
+    <input type="file" id="import-file" accept=".xlsx" style="padding:8px">
+    <label style="margin-top:8px">Import Mode</label>
+    <select id="import-mode">
+      <option value="true">Merge — add new records, keep existing</option>
+      <option value="false">Replace — overwrite each sheet's data entirely</option>
+    </select>
+    <div id="import-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
+    <button class="btn btn-accent btn-full" onclick="submitImport()" style="margin-top:8px">Import</button>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -91,8 +91,12 @@ def current_path() -> str:
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    error = None
-    if request.method == "POST":
+    error = hint = None
+    username = ""
+    if request.method == "POST" and request.form.get("action") == "hint":
+        username = request.form.get("username", "").strip().lower()
+        hint = auth.password_hint(username) or "No hint is set for that username."
+    elif request.method == "POST":
         username = request.form.get("username", "").strip().lower()
         if auth.verify_password(username, request.form.get("password", "")):
             session.clear()
@@ -101,7 +105,8 @@ def login():
             nxt = request.args.get("next", "")
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("index"))
         error = "Wrong username or password."
-    return render_template("login.html", error=error, no_users=not auth.load_users())
+    return render_template("login.html", error=error, hint=hint, username=username,
+                           no_users=not auth.load_users())
 
 
 @app.route("/logout", methods=["POST"])

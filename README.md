@@ -31,12 +31,18 @@ venv/bin/pip install -r requirements.txt
 cp .env.example .env            # optional: add ANTHROPIC_API_KEY
 ```
 
-Create an account for each family member. Passwords are prompted and never echoed:
+Create an account for each family member. Passwords are prompted and never echoed.
+`--hint` is optional; it's shown on the login page under "Forgot password?":
 
 ```bash
-venv/bin/python manage_users.py add alex --name "Alex"
+venv/bin/python manage_users.py add alex --name "Alex" --hint "first pet + birth year"
 venv/bin/python manage_users.py add sam  --name "Sam"
 ```
+
+There's no separate "family" account. Every login already has access to the shared Family book,
+and keeping one login per person means shared expenses show who added them.
+
+Anyone on your tailnet can read a hint by typing that username, so make hints meaningful only to that person.
 
 **Migrating from the single-user version:** bring your old `finance_data.json` over as your personal book:
 
@@ -50,7 +56,7 @@ Run it:
 venv/bin/python web_app.py      # http://localhost:5050
 ```
 
-Other commands: `manage_users.py passwd <user>`, `manage_users.py list`.
+Other commands: `manage_users.py passwd <user>` (reset a forgotten password), `manage_users.py hint <user> ["text"]`, `manage_users.py list`.
 
 ## Reaching it from phones (Tailscale)
 

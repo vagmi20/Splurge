@@ -4,7 +4,7 @@ Family accounts for the Finance Dashboard.
 
 Accounts live in data/users.json (git-ignored):
     {"users": {"<username>": {"display_name": ..., "password_hash": ...,
-                              "token_hashes": [...]}}}
+                              "hint": ..., "token_hashes": [...]}}}
 Passwords are stored as salted hashes; phone API tokens as SHA-256 hashes,
 so the plaintext of either is never written to disk.
 """
@@ -22,6 +22,7 @@ from data_manager import DATA_DIR, save_data
 
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 USERNAME_RE = re.compile(r"^[a-z0-9_-]{2,32}$")
+RESERVED_USERNAMES = {"family"}  # the shared book isn't a person; everyone already has access
 
 # Used to spend the same time on unknown usernames as on wrong passwords.
 _DUMMY_HASH = generate_password_hash("not-a-real-password")
@@ -40,6 +41,11 @@ def save_users(users: dict) -> None:
 
 def display_name(username: str) -> str:
     return load_users().get(username, {}).get("display_name", username)
+
+
+def password_hint(username: str):
+    """The password hint a user set for themselves, or None."""
+    return load_users().get(username, {}).get("hint") or None
 
 
 def verify_password(username: str, password: str) -> bool:

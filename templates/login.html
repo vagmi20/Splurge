@@ -24,12 +24,19 @@
       </div>
     {% endif %}
     {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
+    {% if hint %}
+      <div class="auth-note">
+        <strong>Hint:</strong> {{ hint }}<br>
+        Still stuck? Reset it on the host: <code>python manage_users.py passwd {{ username or '&lt;username&gt;' }}</code>
+      </div>
+    {% endif %}
 
     <label for="username">Username</label>
-    <input id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" required autofocus>
+    <input id="username" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" autocorrect="off" required autofocus>
     <label for="password">Password</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
-    <button class="btn btn-accent" type="submit">Sign in</button>
+    <button class="btn btn-accent" type="submit" name="action" value="login">Sign in</button>
+    <button class="link-btn forgot" type="submit" name="action" value="hint" formnovalidate>Forgot password? Show my hint</button>
   </form>
 </body>
 </html>

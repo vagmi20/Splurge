@@ -543,3 +543,4 @@ body.auth-page {
 .quick-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
 .quick-foot { margin-top: 20px; text-align: center; font-size: 13px; }
 .quick-foot a { color: var(--accent); text-decoration: none; }
+.auth-card .forgot { margin-top: 14px; align-self: center; }

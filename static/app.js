@@ -13,6 +13,10 @@ const CAT_COLORS = {
   Food:'#34d399', Gas:'#fbbf24', Utilities:'#60a5fa', Drinks:'#a855f7',
   Entertainment:'#a78bfa', Healthcare:'#fb7185', Clothing:'#38bdf8',
   Other:'#9ca3af', Alcohol:'#ec4899', Rent:'#f97316', 'Transit/Parking':'#2dd4bf',
+  // Family book categories
+  Groceries:'#34d399', Housing:'#f97316', Household:'#94a3b8', 'Kids & School':'#38bdf8',
+  Insurance:'#60a5fa', Transportation:'#2dd4bf', 'Family Dining':'#fbbf24',
+  'Family Trips':'#fb923c', 'Outings & Activities':'#a78bfa', 'Gifts & Celebrations':'#ec4899',
 };
 const PALETTE = ['#4f8ef7','#34d399','#f87171','#fbbf24','#a78bfa','#fb7185','#38bdf8','#86efac','#f97316','#ec4899'];
 
@@ -77,9 +81,17 @@ const GOAL_META = {
 const fmt = n => '$' + pa(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const pa  = v  => parseFloat(String(v).replace(/[$,]/g,'')) || 0;
 const monthlyAmt = p => pa(p.amount) * (FREQ[p.frequency] || 1);
-const totalMonthlyIncome = () => (state.data.paychecks||[])
+const isFamilyBook = () => state.data._book === 'family';
+// Paychecks are hidden in the Family book (SHOW_FAMILY_PAYCHECKS in web_app.py);
+// while hidden they don't count toward its income.
+const visiblePaychecks = () => state.data._show_paychecks === false ? [] : (state.data.paychecks||[]);
+const membersMonthly = () => (state.data.members||[]).reduce((s,m)=>s+pa(m.contribution),0);
+const totalMonthlyIncome = () => visiblePaychecks()
   .filter(p => p.frequency !== 'one-time')
-  .reduce((s,p)=>s+monthlyAmt(p),0);
+  .reduce((s,p)=>s+monthlyAmt(p),0)
+  + (isFamilyBook() ? membersMonthly() : 0);
+// Escape text other family members typed before putting it in HTML
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today = () => new Date().toISOString().slice(0,10);
 // Parse YYYY-MM-DD without timezone shifting (JS treats bare date strings as UTC)
 const parseLocalDate = d => { if (!d) return null; const [y,m,day]=d.split('-').map(Number); return new Date(y,m-1,day); };
@@ -114,6 +126,7 @@ async function fetchData() {
 function renderAll() {
   const tab = state.activeTab;
   if (tab === 'overview')       renderOverview();
+  if (tab === 'members')        renderMembers();
   if (tab === 'paychecks')      renderPaychecks();
   if (tab === 'investments')    renderInvestments();
   if (tab === 'spending')       renderSpending();
@@ -156,7 +169,7 @@ function renderOverview() {
   const goalsPct    = totalTarget > 0 ? Math.round(totalSaved/totalTarget*100) : 0;
 
   const cards = [
-    { label:'Monthly Income',   value: fmt(mi),       color:'var(--green)',  sub:'From paychecks' },
+    { label:'Monthly Income',   value: fmt(mi),       color:'var(--green)',  sub: isFamilyBook() ? `From ${(d.members||[]).length} member${(d.members||[]).length===1?'':'s'}` : 'From paychecks' },
     { label:'Monthly Spending', value: fmt(spending),  color:'var(--red)',    sub:'This month logged' },
     { label:'Subscriptions',    value: fmt(subs),      color:'var(--yellow)', sub:`${(d.subscriptions||[]).filter(s=>s.active!==false).length} active` },
     { label:'Net Cash Flow',    value: fmt(net),       color: net>=0?'var(--green)':'var(--red)', sub:'Income − expenses' },
@@ -341,9 +354,12 @@ function renderCharts() {
 
 // ── Budget Allocation ─────────────────────────────────────────────────────────
 const BUDGET_CONFIG = [
-  { key:'needs',   label:'🏠 Needs',   color:'var(--accent)',  desc:'Gas, Transit/Parking, Utilities, Healthcare · Subs: Gym, Spotify, Claude, Phone · leftover → sweep' },
-  { key:'wants',   label:'🎮 Wants',   color:'var(--yellow)', desc:'Food, Drinks, Clothing, Entertainment · Subs: HBO, Netflix, Six Flags · Goals: Vacation' },
-  { key:'savings', label:'💰 Savings', color:'var(--green)',  desc:'Investments · hard goals committed · leftover → sweep to soft goals' },
+  { key:'needs',   label:'🏠 Needs',   color:'var(--accent)',  desc:'Gas, Transit/Parking, Utilities, Healthcare · Subs: Gym, Spotify, Claude, Phone · leftover → sweep',
+    familyDesc:'Groceries, Housing, Utilities, Household, Kids & School, Healthcare, Insurance, Transportation · leftover → sweep' },
+  { key:'wants',   label:'🎮 Wants',   color:'var(--yellow)', desc:'Food, Drinks, Clothing, Entertainment · Subs: HBO, Netflix, Six Flags · Goals: Vacation',
+    familyDesc:'Family dinners, trips, outings & activities, gifts & celebrations, entertainment · Goals: Vacation' },
+  { key:'savings', label:'💰 Savings', color:'var(--green)',  desc:'Investments · hard goals committed · leftover → sweep to soft goals',
+    familyDesc:'Joint investments · family goals (college, home, emergency fund) · leftover → sweep to soft goals' },
 ];
 
 // Goal category → budget bucket mapping (fallback when a goal has no explicit `bucket`)
@@ -517,17 +533,10 @@ function renderBudget() {
   const sl  = d.budget_sliders || { needs:50, wants:30, savings:20 };
   const allowBleed = sl.savings_bleed !== false; // default true
 
-  const CAT_MAP = { needs:['Gas','Transit/Parking','Utilities','Healthcare','Car Services','Rent'],
-                    wants:['Food','Alcohol','Entertainment','Clothing','Drinks','Other'],
-                    savings:[] };
-
   // Actual spending from logged expenses (this month)
   const spendOnly = { needs:0, wants:0, savings:0 };
   (d.spending||[]).filter(s=>thisMonth(s.date)).forEach(s => {
-    for (const [bk, cats] of Object.entries(CAT_MAP)) {
-      if (cats.includes(s.category)) { spendOnly[bk] += pa(s.amount); break; }
-      if (!Object.values(CAT_MAP).flat().includes(s.category)) { spendOnly.wants += pa(s.amount); break; }
-    }
+    spendOnly[bucketForCategory(s.category)] += pa(s.amount);
   });
 
   // Fixed monthly commitments: subs + investments + HARD goals (committed
@@ -586,7 +595,7 @@ function renderBudget() {
   const reserved = { needs: gf.needsLeftover, wants: 0, savings: gf.savingsLeftover };
 
   // One-time paychecks this month boost wants headroom (bonus / freelance income)
-  const oneTimeBonus = (d.paychecks||[])
+  const oneTimeBonus = visiblePaychecks()
     .filter(p => p.frequency === 'one-time' && thisMonth(p.next_date))
     .reduce((s, p) => s + pa(p.amount), 0);
 
@@ -697,7 +706,7 @@ function renderBudget() {
             <div class="budget-row-header">
               <div>
                 <div class="budget-row-label" style="color:${cfg.color}">${cfg.label}</div>
-                <div style="font-size:11px;color:var(--muted)">${cfg.desc}</div>
+                <div style="font-size:11px;color:var(--muted)">${isFamilyBook() ? cfg.familyDesc : cfg.desc}</div>
               </div>
               <div>
                 <div class="budget-row-pct" style="color:${cfg.color}" id="pct-${cfg.key}">${pct}%</div>
@@ -868,6 +877,122 @@ async function saveSliders() {
   await api('POST', '/api/budget_sliders', vals);
   state.data.budget_sliders = vals;
   renderBudget();
+}
+
+// ── Family members ────────────────────────────────────────────────────────────
+function renderMembers() {
+  const d       = state.data;
+  const members = d.members || [];
+  const total   = membersMonthly();
+  const monthSpend = (d.spending||[]).filter(s=>thisMonth(s.date));
+  const spentBy = u => monthSpend.filter(s=>s.added_by===u).reduce((t,s)=>t+pa(s.amount),0);
+  const bucketTotal = b => monthSpend.filter(s=>bucketForCategory(s.category)===b).reduce((t,s)=>t+pa(s.amount),0);
+
+  document.getElementById('members-summary').innerHTML = [
+    { label:'Members',             value: String(members.length),    color:'var(--accent)' },
+    { label:'Family Budget',       value: fmt(total)+'/mo',          color:'var(--green)',  sub:'Sum of contributions' },
+    { label:'Needs Spent',         value: fmt(bucketTotal('needs')), color:'var(--accent)', sub:'This month' },
+    { label:'Wants Spent',         value: fmt(bucketTotal('wants')), color:'var(--yellow)', sub:'Dinners, trips, outings…' },
+  ].map(c=>`<div class="card"><div class="card-label">${c.label}</div><div class="card-value" style="color:${c.color}">${c.value}</div>${c.sub?`<div class="card-sub">${c.sub}</div>`:''}</div>`).join('');
+
+  const list = document.getElementById('members-list');
+  if (!members.length) {
+    list.innerHTML = '<div class="empty">No members yet. Click "+ Add Member" to add the people who share this budget.</div>';
+    return;
+  }
+  list.innerHTML = members.map(m => {
+    const share = total > 0 ? Math.round(pa(m.contribution) / total * 100) : 0;
+    const meta = [
+      m.username ? `🔑 Signs in as <strong>${esc(m.username)}</strong>` : 'No login',
+      m.username ? `${fmt(spentBy(m.username))} logged this month` : '',
+      m.notes ? esc(m.notes) : '',
+    ].filter(Boolean).join(' · ');
+    return `
+    <div class="item-card">
+      <div class="item-main">
+        <div class="item-name">${esc(m.name)}</div>
+        <div class="item-meta">${meta}</div>
+      </div>
+      <div class="item-right">
+        <div class="item-value" style="color:var(--green)">${fmt(m.contribution)}/mo</div>
+        <div class="item-sub">${share}% of family budget</div>
+      </div>
+      <div class="item-actions">
+        <button class="btn btn-icon" id="mem-edit-${m.id}">Edit</button>
+        <button class="btn btn-danger" id="mem-del-${m.id}" title="Remove from the family budget (their login stays)">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+  members.forEach(m => {
+    document.getElementById(`mem-edit-${m.id}`).addEventListener('click', () => editMember(m));
+    document.getElementById(`mem-del-${m.id}`).addEventListener('click', () => {
+      if (confirm(`Remove ${m.name} from the family budget? Their login and personal book are kept.`)) del('members', m.id);
+    });
+  });
+}
+
+// Login dropdown: no login, an existing account not linked to another member, or a new one
+function fillMemberLoginSelect(current) {
+  const linked = new Set((state.data.members||[]).map(m=>m.username).filter(u => u && u !== current));
+  const opts = [['', 'No login (e.g. a child)']];
+  (state.data._accounts||[]).filter(a => !linked.has(a.username))
+    .forEach(a => opts.push([a.username, `${a.display_name} (${a.username})`]));
+  opts.push(['__new__', '+ Create a new login…']);
+  document.getElementById('mem-login').innerHTML =
+    opts.map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+  document.getElementById('mem-login').value = current || '';
+  memberLoginChanged();
+}
+
+function memberLoginChanged() {
+  document.getElementById('mem-new-login').style.display =
+    document.getElementById('mem-login').value === '__new__' ? 'block' : 'none';
+}
+
+function newMember() { editMember({}); }
+
+function editMember(m) {
+  document.getElementById('mem-id').value       = m.id || '';
+  document.getElementById('mem-name').value     = m.name || '';
+  document.getElementById('mem-contrib').value  = m.contribution || '';
+  document.getElementById('mem-notes').value    = m.notes || '';
+  document.getElementById('mem-username').value = '';
+  document.getElementById('mem-password').value = '';
+  document.getElementById('mem-hint').value     = '';
+  document.getElementById('mem-contrib-preview').style.display = 'none';
+  fillMemberLoginSelect(m.username || '');
+  openModal('modal-member');
+}
+
+document.getElementById('mem-contrib')?.addEventListener('input', function() {
+  const preview = document.getElementById('mem-contrib-preview');
+  const val = this.value.trim();
+  const result = /[+\-*/]/.test(val) ? evalExpr(val) : null;
+  if (result !== null) { preview.textContent = '= ' + fmt(result); preview.style.display = 'block'; }
+  else preview.style.display = 'none';
+});
+
+async function saveMember() {
+  const login  = document.getElementById('mem-login').value;
+  const contribRaw = document.getElementById('mem-contrib').value.trim();
+  const rec = {
+    id:           document.getElementById('mem-id').value,
+    name:         document.getElementById('mem-name').value.trim(),
+    contribution: contribRaw ? (evalExpr(contribRaw) ?? pa(contribRaw)) : 0,
+    notes:        document.getElementById('mem-notes').value.trim(),
+    username:     login === '__new__' ? '' : login,
+  };
+  if (login === '__new__') {
+    rec.new_login = {
+      username: document.getElementById('mem-username').value.trim(),
+      password: document.getElementById('mem-password').value,
+      hint:     document.getElementById('mem-hint').value.trim(),
+    };
+  }
+  const r = await api('POST', '/api/members', rec);
+  if (!r.ok) { alert(r.error || 'Could not save member'); return; }
+  closeModal('modal-member');
+  await fetchData();
 }
 
 // ── Paychecks ─────────────────────────────────────────────────────────────────
@@ -2186,7 +2311,7 @@ async function submitImport() {
 // ── Delete ────────────────────────────────────────────────────────────────────
 async function del(collection, id) {
   const endpoints = {
-    paychecks:'/api/paychecks/', investments:'/api/investments/',
+    paychecks:'/api/paychecks/', investments:'/api/investments/', members:'/api/members/',
     spending:'/api/spending/', subscriptions:'/api/subscriptions/',
     goals:'/api/goals/', vacations:'/api/vacations/',
   };
@@ -2213,9 +2338,23 @@ const CAT_MAP_BUCKETS = {
   savings: [],
 };
 
+// Family book: household essentials are Needs; shared fun (family dinners,
+// trips, outings, celebrations) is Wants. Anything not listed falls back to the
+// personal mapping above, then to Wants.
+const FAMILY_BUCKETS = {
+  needs:   ['Groceries','Housing','Utilities','Household','Kids & School','Healthcare',
+            'Insurance','Transportation','Rent','Gas','Transit/Parking','Car Services'],
+  wants:   ['Family Dining','Family Trips','Outings & Activities','Gifts & Celebrations',
+            'Entertainment','Food','Drinks','Alcohol','Clothing','Other'],
+  savings: [],
+};
+
 function bucketForCategory(cat) {
-  for (const [b, cats] of Object.entries(CAT_MAP_BUCKETS)) {
-    if (cats.includes(cat)) return b;
+  const maps = isFamilyBook() ? [FAMILY_BUCKETS, CAT_MAP_BUCKETS] : [CAT_MAP_BUCKETS];
+  for (const map of maps) {
+    for (const [b, cats] of Object.entries(map)) {
+      if (cats.includes(cat)) return b;
+    }
   }
   return 'wants';
 }

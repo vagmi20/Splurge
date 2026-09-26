@@ -58,8 +58,25 @@ FREQ_MULTIPLIERS = {
 
 DEFAULT_COLLECTIONS = ["paychecks", "investments", "spending", "subscriptions", "goals", "vacations"]
 
+# The Family book is funded by what each member puts in (the Members tab), so its
+# Paychecks tab is hidden. Flip this to bring it back; saved paychecks are kept
+# and count toward family income again once it's on.
+SHOW_FAMILY_PAYCHECKS = False
+
 def monthly_amount(p):
     return parse_amount(p.get("amount", 0)) * FREQ_MULTIPLIERS.get(p.get("frequency", "monthly"), 1.0)
+
+
+def show_paychecks(book: str) -> bool:
+    return book != "family" or SHOW_FAMILY_PAYCHECKS
+
+
+def book_monthly_income(d: dict, book: str) -> float:
+    """Recurring paychecks, plus (for the Family book) members' monthly contributions."""
+    income = sum(monthly_amount(p) for p in d["paychecks"]) if show_paychecks(book) else 0.0
+    if book == "family":
+        income += sum(parse_amount(m.get("contribution", 0)) for m in d.get("members", []))
+    return income
 
 
 # ── Auth & books ───────────────────────────────────────────────────────────────
@@ -131,19 +148,26 @@ def switch_book():
 @login_required
 def index():
     return render_template("index.html", user=session["user"],
-                           display_name=auth.display_name(session["user"]), book=current_book())
+                           display_name=auth.display_name(session["user"]), book=current_book(),
+                           show_paychecks=show_paychecks(current_book()))
 
 
 @app.route("/api/data")
 @login_required
 def get_data():
+    book = current_book()
     d = load_data(current_path())
-    mi = sum(monthly_amount(p) for p in d["paychecks"])
+    mi = book_monthly_income(d, book)
     d["_computed"] = {
         "monthly_income": round(mi, 2),
         "annual_income":  round(mi * 12, 2),
     }
-    d["_book"] = current_book()
+    d["_book"] = book
+    d["_show_paychecks"] = show_paychecks(book)
+    if book == "family":
+        # Logins that can be linked to a member (names only, never hashes)
+        d["_accounts"] = [{"username": u, "display_name": info.get("display_name", u)}
+                          for u, info in auth.load_users().items()]
     return jsonify(d)
 
 
@@ -254,6 +278,55 @@ def save_trip_split():
 @login_required
 def delete_trip_split(tid):
     _delete("trip_splits", tid)
+    return jsonify({"ok": True})
+
+
+# ── Family members ─────────────────────────────────────────────────────────────
+# Members always live in the Family book. Each can put a monthly contribution
+# into the family budget and may be linked to a login (or get a new one here).
+
+@app.route("/api/members", methods=["POST"])
+@login_required
+def save_member():
+    body = request.json or {}
+    name = str(body.get("name", "")).strip()
+    if not name:
+        return jsonify({"ok": False, "error": "Give the member a name"}), 400
+    rec = {
+        "id":           str(body.get("id") or ""),
+        "name":         name,
+        "contribution": str(round(max(0.0, parse_amount(body.get("contribution"))), 2)),
+        "username":     str(body.get("username") or "").strip().lower(),
+        "notes":        str(body.get("notes", "")).strip(),
+    }
+    family = book_path(FAMILY_BOOK)
+
+    new_login = body.get("new_login")
+    if new_login:
+        rec["username"] = str(new_login.get("username", "")).strip().lower()
+    if rec["username"]:
+        taken = next((m for m in load_data(family)["members"]
+                      if m.get("username") == rec["username"] and m["id"] != rec["id"]), None)
+        if taken:
+            return jsonify({"ok": False, "error": f"'{rec['username']}' is already linked to {taken['name']}"}), 400
+    if new_login:
+        try:
+            auth.create_user(rec["username"], str(new_login.get("password", "")),
+                             display_name=name, hint=str(new_login.get("hint", "")).strip())
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    elif rec["username"] and rec["username"] not in auth.load_users():
+        return jsonify({"ok": False, "error": f"No login named '{rec['username']}'"}), 400
+
+    return jsonify({"ok": True, "id": _upsert("members", rec, path=family)})
+
+
+@app.route("/api/members/<mid>", methods=["DELETE"])
+@login_required
+def delete_member(mid):
+    # Removes them from the family budget only; their login and personal book stay.
+    with edit_book(book_path(FAMILY_BOOK)) as data:
+        data["members"] = [m for m in data.get("members", []) if m["id"] != mid]
     return jsonify({"ok": True})
 
 

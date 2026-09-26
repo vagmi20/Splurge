@@ -5,6 +5,11 @@ switch between two **books**:
 
 - **Personal**: their own paychecks, investments, spending, subscriptions, goals, and vacations. Only they can see it.
 - **Family**: one shared book for household spending, joint investments, and shared goals. Every signed-in family member can see and edit it, and each shared expense records who added it.
+  Its **Members** tab lists who's in the family budget and what each person puts in per month. Those
+  contributions are the family's income, split into Needs (groceries, housing, utilities, kids & school…),
+  Wants (family dinners, trips, outings, gifts & celebrations…) and Savings. You can add members without a
+  login (e.g. kids), link an existing login, or create a new login right from the Add Member form.
+  The Family book's Paychecks tab is hidden; set `SHOW_FAMILY_PAYCHECKS = True` in `web_app.py` to bring it back.
 
 Everything runs on one machine (the "host"). Family members reach it over Tailscale.
 

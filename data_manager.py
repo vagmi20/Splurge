@@ -39,6 +39,18 @@ DEFAULT_DATA = {
     ]
 }
 
+# The family book budgets household spending, so it starts with household
+# categories. The dashboard buckets these into Needs / Wants (see
+# FAMILY_BUCKETS in static/app.js).
+FAMILY_CATEGORIES = [
+    # Needs
+    "Groceries", "Housing", "Utilities", "Household", "Kids & School",
+    "Healthcare", "Insurance", "Transportation",
+    # Wants
+    "Family Dining", "Family Trips", "Outings & Activities",
+    "Gifts & Celebrations", "Entertainment", "Other",
+]
+
 
 def book_path(owner: str) -> str:
     """Path of a book: a username for a personal book, or FAMILY_BOOK."""
@@ -49,14 +61,20 @@ def book_path(owner: str) -> str:
 
 def load_data(path: str) -> dict:
     """Load a book from JSON, merging any missing keys from defaults."""
+    data = {}
     if os.path.exists(path):
         with open(path, "r") as f:
             data = json.load(f)
-        for k, v in DEFAULT_DATA.items():
-            if k not in data:
-                data[k] = json.loads(json.dumps(v))
-        return data
-    return json.loads(json.dumps(DEFAULT_DATA))
+    for k, v in DEFAULT_DATA.items():
+        if k not in data:
+            data[k] = json.loads(json.dumps(v))
+    if path == book_path(FAMILY_BOOK):
+        data.setdefault("members", [])
+        # A family book created before it had its own categories still has the
+        # untouched personal defaults; switch it over while nothing uses them.
+        if data["spending_categories"] == DEFAULT_DATA["spending_categories"] and not data["spending"]:
+            data["spending_categories"] = list(FAMILY_CATEGORIES)
+    return data
 
 
 def save_data(data: dict, path: str) -> None:

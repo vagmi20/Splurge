@@ -18,15 +18,16 @@ import json
 import os
 import sys
 
-from auth import RESERVED_USERNAMES, USERNAME_RE, load_users, new_api_token, save_users, set_password
+from auth import (MIN_PASSWORD_LENGTH, load_users, new_api_token, new_username_error, save_users,
+                  set_password)
 from data_manager import book_path, load_data, save_data
 
 
 def _prompt_password() -> str:
     while True:
         pw = getpass.getpass("Password: ")
-        if len(pw) < 8:
-            print("Use at least 8 characters.")
+        if len(pw) < MIN_PASSWORD_LENGTH:
+            print(f"Use at least {MIN_PASSWORD_LENGTH} characters.")
             continue
         if pw != getpass.getpass("Confirm:  "):
             print("Passwords don't match.")
@@ -42,12 +43,9 @@ def _require_user(users, username):
 def cmd_add(args):
     users = load_users()
     username = args.username.lower()
-    if not USERNAME_RE.match(username):
-        sys.exit("Usernames are 2-32 chars of a-z, 0-9, '_' or '-'.")
-    if username in RESERVED_USERNAMES:
-        sys.exit(f"'{username}' is reserved: the Family book is already shared by every account.")
-    if username in users:
-        sys.exit(f"'{username}' already exists.")
+    error = new_username_error(username, users)
+    if error:
+        sys.exit(error)
 
     path = book_path(username)
     if args.import_file:

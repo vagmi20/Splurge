@@ -40,7 +40,8 @@ def add_expense(amount: float, category: str, notes: str = "", date: str = "", b
 
     Args:
         amount: Dollar amount (e.g. 12.50)
-        category: One of Food, Gas, Transit/Parking, Utilities, Entertainment, Drinks, Healthcare, Clothing, Other
+        category: One of the book's categories (see list_categories). Personal: Food, Gas, Utilities, ...
+                  Family: Groceries, Housing, Family Dining, Family Trips, ...
         notes: Optional description (e.g. 'Chipotle lunch')
         date: Optional date in YYYY-MM-DD format (defaults to today)
         book: "personal" (default) or "family" for shared household spending
@@ -48,11 +49,11 @@ def add_expense(amount: float, category: str, notes: str = "", date: str = "", b
     if not date:
         date = str(_date.today())
 
-    cat = category.strip().title()
     with edit_book(_book(book)) as data:
         valid = data.get("spending_categories", VALID_CATEGORIES)
-        if cat not in valid:
-            return f"Invalid category '{cat}'. Valid options: {', '.join(valid)}"
+        cat = next((c for c in valid if c.lower() == category.strip().lower()), None)
+        if cat is None:
+            return f"Invalid category '{category}'. Valid options: {', '.join(valid)}"
 
         entry = {
             "id": make_id(),

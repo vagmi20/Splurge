@@ -82,5 +82,34 @@ def user_for_token(token: str):
     return None
 
 
+MIN_PASSWORD_LENGTH = 8
+
+
+def new_username_error(username: str, users: dict):
+    """Why `username` can't be used for a new account, or None if it can."""
+    if not USERNAME_RE.match(username):
+        return "Usernames are 2-32 chars of a-z, 0-9, '_' or '-'."
+    if username in RESERVED_USERNAMES:
+        return f"'{username}' is reserved: the Family book is already shared by every account."
+    if username in users:
+        return f"'{username}' already exists."
+    return None
+
+
+def create_user(username: str, password: str, display_name: str = "", hint: str = "") -> None:
+    """Add an account. Raises ValueError with a user-facing message if it can't."""
+    users = load_users()
+    error = new_username_error(username, users)
+    if error:
+        raise ValueError(error)
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Use at least {MIN_PASSWORD_LENGTH} characters for the password.")
+    users[username] = {"display_name": display_name or username.title(), "token_hashes": []}
+    if hint:
+        users[username]["hint"] = hint
+    set_password(users, username, password)
+    save_users(users)
+
+
 def set_password(users: dict, username: str, password: str) -> None:
     users[username]["password_hash"] = generate_password_hash(password, method=HASH_METHOD)

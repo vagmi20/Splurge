@@ -25,7 +25,8 @@
     </div>
     <div class="nav-items">
       <button class="nav-btn active" data-tab="overview">📊 Overview</button>
-      <button class="nav-btn" data-tab="paychecks">💵 Paychecks</button>
+      {% if book == 'family' %}<button class="nav-btn" data-tab="members">👪 Members</button>{% endif %}
+      {% if show_paychecks %}<button class="nav-btn" data-tab="paychecks">💵 Paychecks</button>{% endif %}
       <button class="nav-btn" data-tab="investments">📈 Investments</button>
       <button class="nav-btn" data-tab="spending">🧾 Spending</button>
       <button class="nav-btn" data-tab="subscriptions">🔄 Subscriptions</button>
@@ -76,6 +77,17 @@
       </div>
       <p class="muted">Manage your recurring income sources</p>
       <div id="paycheck-list"></div>
+    </div>
+
+    <!-- Family members (Family book only) -->
+    <div id="tab-members" class="tab-panel">
+      <div class="page-header">
+        <h1>Family Members</h1>
+        <button class="btn btn-accent" onclick="newMember()">+ Add Member</button>
+      </div>
+      <p class="muted">Who's in the family budget. Each member's monthly contribution funds the family's Needs, Wants and Savings.</p>
+      <div id="members-summary" class="cards-row"></div>
+      <div id="members-list"></div>
     </div>
 
     <!-- Investments -->
@@ -314,6 +326,33 @@
     <label>Notes (optional)</label>
     <input type="text" id="pc-notes">
     <button class="btn btn-accent btn-full" onclick="savePaycheck()">Save</button>
+  </div>
+</div>
+
+<!-- Member Modal -->
+<div id="modal-member" class="modal-overlay" onclick="closeModalOutside(event,'modal-member')">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Family Member</span><button class="modal-close" onclick="closeModal('modal-member')">✕</button></div>
+    <input type="hidden" id="mem-id">
+    <label>Name</label>
+    <input type="text" id="mem-name" placeholder="e.g. Sam">
+    <label>Monthly Contribution ($) <span style="font-size:11px;color:var(--muted);font-weight:400">— what they put into the family budget</span></label>
+    <input type="text" id="mem-contrib" placeholder="0.00 or 1500+200" inputmode="decimal" autocomplete="off">
+    <div id="mem-contrib-preview" style="display:none;font-size:12px;color:var(--green);margin-top:-10px;margin-bottom:4px"></div>
+    <label>Login</label>
+    <select id="mem-login" onchange="memberLoginChanged()"></select>
+    <div id="mem-new-login" style="display:none">
+      <label>Username</label>
+      <input type="text" id="mem-username" placeholder="lowercase, e.g. sam" autocomplete="off" autocapitalize="off">
+      <label>Temporary Password <span style="font-size:11px;color:var(--muted);font-weight:400">— at least 8 characters</span></label>
+      <input type="password" id="mem-password" autocomplete="new-password">
+      <label>Password Hint (optional)</label>
+      <input type="text" id="mem-hint" placeholder="shown on the login page under 'Forgot password?'">
+      <div style="font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:4px">They sign in with this and get their own Personal book plus the shared Family book.</div>
+    </div>
+    <label>Notes (optional)</label>
+    <input type="text" id="mem-notes">
+    <button class="btn btn-accent btn-full" onclick="saveMember()">Save</button>
   </div>
 </div>
 

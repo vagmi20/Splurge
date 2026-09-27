@@ -80,6 +80,12 @@ On each phone, with Tailscale connected:
 
 The full dashboard is at the same address without `/quick`. It's built for desktop screens.
 
+**Other currencies.** Expenses can be logged in USD, EUR, INR (₹) or DKK (kr), both on `/quick` and in the dashboard's
+expense form. Books stay in USD: the server converts each expense using the European Central Bank rate for its date,
+from the free [Frankfurter API](https://frankfurter.dev) (no key needed). It keeps the original amount and the rate it
+used, so the entry still shows what you actually paid. Rates are cached in `data/fx_cache.json`, and if the host
+is offline, the last known rate is used. To add a currency, add it to `CURRENCIES` in `fx.py` and to the pickers.
+
 To share with family members who have their own Tailscale accounts, invite them to your tailnet or
 [share the host machine](https://tailscale.com/kb/1084/sharing) with them.
 
@@ -101,7 +107,8 @@ In the Shortcuts app:
    - URL: `https://<host>.<tailnet>.ts.net/api/quick-add`
    - Method: `POST`
    - Headers: `Authorization: Bearer <token>`
-   - Request Body (JSON): `amount` = Provided Input, `category` = Chosen Item, `book` = `personal` or `family`
+   - Request Body (JSON): `amount` = Provided Input, `category` = Chosen Item, `book` = `personal` or `family`,
+     and optionally `currency` = `EUR` / `INR` / `DKK` (default `USD`)
 4. **Get Dictionary Value** `message`, then **Show Notification**.
 
 With `ANTHROPIC_API_KEY` set on the host, you can send `{"text": "twelve fifty for lunch at Chipotle", "book": "family"}`
@@ -121,6 +128,7 @@ Each tool takes `book: "personal" | "family"`. If more than one account exists, 
 |------|---------|
 | `web_app.py` | Flask app: dashboard, login, `/quick` phone page, `/api/quick-add` |
 | `auth.py` / `manage_users.py` | Accounts, password/token hashing, and the CLI to manage them |
+| `fx.py` | Currency conversion (ECB rates via Frankfurter, cached in `data/`) |
 | `data_manager.py` | Loading/saving books (file-locked, atomic writes), Excel import/export |
 | `receipt_parser.py` | On-device receipt OCR (macOS Vision) for bill splitting |
 | `expense_parser.py` | Optional Claude parsing of free-text expenses |

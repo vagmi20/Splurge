@@ -13,6 +13,7 @@ SYSTEM_PROMPT = """You are a finance assistant. Extract expense information from
 Return ONLY a JSON object with these fields (no markdown, no extra text):
 {{
   "amount": <float>,
+  "currency": <one of: USD, EUR, INR, DKK — USD unless the message says otherwise (€/euros → EUR, ₹/rupees/Rs → INR, kr/kroner/DKK → DKK)>,
   "category": <one of: {categories}>,
   "notes": <short description, or empty string>,
   "date": <YYYY-MM-DD, use today's date if not specified>

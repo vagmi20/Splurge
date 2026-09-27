@@ -408,8 +408,16 @@
     <input type="hidden" id="sp-id">
     <label>Category</label>
     <select id="sp-cat"></select>
-    <label>Amount ($) <span style="font-size:11px;color:var(--muted);font-weight:400">— supports math, e.g. 9.51+20</span></label>
-    <input type="text" id="sp-amount" placeholder="0.00 or 9.51+20" inputmode="decimal" autocomplete="off">
+    <label>Amount <span style="font-size:11px;color:var(--muted);font-weight:400">— supports math, e.g. 9.51+20</span></label>
+    <div style="display:flex;gap:8px">
+      <select id="sp-currency" style="width:110px;flex:none">
+        <option value="USD">$ USD</option>
+        <option value="EUR">€ EUR</option>
+        <option value="INR">₹ INR</option>
+        <option value="DKK">kr DKK</option>
+      </select>
+      <input type="text" id="sp-amount" placeholder="0.00 or 9.51+20" inputmode="decimal" autocomplete="off" style="flex:1">
+    </div>
     <div id="sp-amount-preview" style="display:none;font-size:12px;color:var(--green);margin-top:-10px;margin-bottom:4px"></div>
     <label>Date</label>
     <input type="date" id="sp-date">

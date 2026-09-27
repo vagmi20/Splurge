@@ -19,6 +19,7 @@ from data_manager import (DATA_DIR, FAMILY_BOOK, book_path, load_data, edit_book
                           parse_amount, export_to_excel, import_from_excel)
 from receipt_parser import parse_receipt_image
 import auth
+import fx
 
 # Load environment variables from a local .env file if present
 # (FINANCE_SECRET_KEY, ANTHROPIC_API_KEY, FINANCE_HOST, ...).
@@ -221,10 +222,45 @@ def delete_investment(iid):
     return jsonify({"ok": True})
 
 
+def _convert_expense(rec: dict, amount: float, currency: str) -> dict:
+    """
+    Set rec["amount"] in USD. For another currency, also keep what was actually
+    paid (original_amount, currency) and the rate used (fx_rate, fx_date).
+    Raises ValueError / RuntimeError when the currency or rate isn't available.
+    """
+    currency = (currency or fx.BASE).upper()
+    for k in ("currency", "original_amount", "fx_rate", "fx_date"):
+        rec.pop(k, None)
+    if currency == fx.BASE:
+        rec["amount"] = f"{amount:.2f}"
+        return rec
+    conv = fx.to_base(amount, currency, rec.get("date"))
+    rec.update(amount=f"{conv['amount']:.2f}", currency=currency,
+               original_amount=f"{amount:.2f}", fx_rate=conv["rate"], fx_date=conv["rate_date"])
+    return rec
+
+
 @app.route("/api/spending", methods=["POST"])
 @login_required
 def save_spending():
-    return jsonify({"ok": True, "id": _upsert("spending", request.json)})
+    rec = request.json
+    if rec.get("currency"):
+        try:
+            _convert_expense(rec, round(parse_amount(rec.get("original_amount", rec.get("amount"))), 2), rec["currency"])
+        except (ValueError, RuntimeError) as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "id": _upsert("spending", rec)})
+
+
+@app.route("/api/fx-rates")
+@login_required
+def fx_rates():
+    """Latest rates for live previews: {CUR: units per 1 USD}."""
+    try:
+        r = fx.rates_for(request.args.get("date"))
+    except RuntimeError as e:
+        return jsonify({"ok": False, "error": str(e)}), 503
+    return jsonify({"ok": True, "base": fx.BASE, "currencies": fx.CURRENCIES, **r})
 
 @app.route("/api/spending/<sid>", methods=["DELETE"])
 @login_required
@@ -456,7 +492,8 @@ def quick_info():
 def quick_add():
     """
     JSON body: {"amount": 12.5, "category": "Food", "notes": "...", "date": "YYYY-MM-DD",
-                "book": "personal" | "family"}
+                "book": "personal" | "family", "currency": "USD" | "EUR" | "INR" | "DKK"}
+    Non-USD amounts are converted to USD at that day's ECB rate (see fx.py).
     or just {"text": "twelve fifty for lunch", "book": ...} to have Claude parse it
     (needs ANTHROPIC_API_KEY).
     """
@@ -487,13 +524,20 @@ def quick_add():
     category = next((c for c in categories if c.lower() == str(body.get("category", "")).strip().lower()), "Other")
     entry = {
         "category": category,
-        "amount":   str(amount),
         "date":     body.get("date") or str(_date.today()),
         "notes":    str(body.get("notes", "")).strip(),
     }
+    currency = str(body.get("currency") or fx.BASE).upper()
+    try:
+        _convert_expense(entry, amount, currency)
+    except (ValueError, RuntimeError) as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     _upsert("spending", entry, path=path, user=user)
 
-    msg = f"Logged ${amount:.2f} {category} to {'Family' if book == 'family' else 'Personal'}"
+    shown = f"${float(entry['amount']):.2f}"
+    if currency != fx.BASE:
+        shown = f"{fx.fmt(amount, currency)} (≈ {shown})"
+    msg = f"Logged {shown} {category} to {'Family' if book == 'family' else 'Personal'}"
     if entry["notes"]:
         msg += f" ({entry['notes']})"
     return jsonify({"ok": True, "message": msg, "entry": entry})

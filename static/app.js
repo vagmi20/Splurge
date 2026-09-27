@@ -1534,7 +1534,7 @@ function renderSpending() {
     <div class="item-card">
       <div class="item-main">
         <div class="item-name" style="color:${col}">● ${s.category}${s.combined?` <span class="badge badge-blue">${s.item_count} items</span>`:''}</div>
-        <div class="item-meta">${s.date||'—'}${s.notes?' · '+s.notes:''}${d._book==='family'&&s.added_by?' · added by '+s.added_by:''}</div>
+        <div class="item-meta">${s.date||'—'}${s.currency?' · '+fmtCur(s.original_amount,s.currency):''}${s.notes?' · '+s.notes:''}${d._book==='family'&&s.added_by?' · added by '+s.added_by:''}</div>
       </div>
       <div class="item-right"><div class="item-value" style="color:var(--red)">${fmt(s.amount)}</div></div>
       <div class="item-actions">
@@ -1553,6 +1553,7 @@ function clearSpendingForm() {
   document.getElementById('sp-id').value     = '';
   document.getElementById('sp-cat').value    = (state.data.spending_categories||['Food'])[0];
   document.getElementById('sp-amount').value = '';
+  document.getElementById('sp-currency').value = lastCurrency();
   document.getElementById('sp-amount-preview').style.display = 'none';
   document.getElementById('sp-date').value   = today();
   document.getElementById('sp-notes').value  = '';
@@ -1570,7 +1571,9 @@ function newSpending() {
 function editSpending(s) {
   document.getElementById('sp-id').value     = s.id || '';
   document.getElementById('sp-cat').value    = s.category || 'Food';
-  document.getElementById('sp-amount').value = s.amount || '';
+  // Converted entries are edited in the currency they were paid in
+  document.getElementById('sp-currency').value = s.currency || 'USD';
+  document.getElementById('sp-amount').value = (s.currency ? s.original_amount : s.amount) || '';
   document.getElementById('sp-date').value   = s.date || today();
   document.getElementById('sp-notes').value  = s.notes || '';
   const combined = !!s.combined;
@@ -1578,6 +1581,7 @@ function editSpending(s) {
   document.getElementById('sp-count').value  = s.item_count || 1;
   document.getElementById('sp-count-row').style.display = combined ? 'block' : 'none';
   updateVacationHint();
+  updateSpendingPreview();
   openModal('modal-spending');
 }
 
@@ -1587,21 +1591,42 @@ document.getElementById('sp-combined').addEventListener('change', function() {
 
 document.getElementById('sp-date').addEventListener('input', updateVacationHint);
 
-document.getElementById('sp-amount').addEventListener('input', function() {
+// ── Currencies ────────────────────────────────────────────────────────────────
+// Books store USD; expenses paid in another currency are converted by the
+// server at that day's ECB rate (fx.py). Rates here are only for the preview.
+const CUR_SYM = { USD:'$', EUR:'€', INR:'₹', DKK:'kr' };
+const fmtCur = (n, cur) => {
+  const v = pa(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return cur === 'DKK' ? `${v} kr` : (CUR_SYM[cur] || cur + ' ') + v;
+};
+const lastCurrency = () => { try { return localStorage.getItem('spCurrency') || 'USD'; } catch (e) { return 'USD'; } };
+let fxRates = null;
+async function loadFxRates() {
+  if (fxRates) return fxRates;
+  try { const r = await (await fetch('/api/fx-rates')).json(); if (r.ok) fxRates = r; } catch (e) {}
+  return fxRates;
+}
+
+async function updateSpendingPreview() {
   const preview = document.getElementById('sp-amount-preview');
-  const val = this.value.trim();
-  // Only show preview when the input looks like an expression (contains an operator)
-  if (/[+\-*/]/.test(val)) {
-    const result = evalExpr(val);
-    if (result !== null) {
-      preview.textContent = '= ' + fmt(result);
-      preview.style.display = 'block';
-    } else {
-      preview.style.display = 'none';
-    }
-  } else {
-    preview.style.display = 'none';
+  const val = document.getElementById('sp-amount').value.trim();
+  const cur = document.getElementById('sp-currency').value;
+  const isExpr = /[+\-*/]/.test(val);
+  const amt = isExpr ? evalExpr(val) : pa(val);
+  const parts = [];
+  // Show the result when the input looks like an expression (contains an operator)
+  if (isExpr && amt !== null) parts.push('= ' + fmtCur(amt, cur));
+  if (cur !== 'USD' && amt) {
+    const fx = await loadFxRates();
+    if (fx) parts.push(`≈ ${fmt(amt / fx.rates[cur])} (ECB ${fx.date})`);
   }
+  preview.textContent = parts.join('  ');
+  preview.style.display = parts.length ? 'block' : 'none';
+}
+document.getElementById('sp-amount').addEventListener('input', updateSpendingPreview);
+document.getElementById('sp-currency').addEventListener('change', function() {
+  try { localStorage.setItem('spCurrency', this.value); } catch (e) {}
+  updateSpendingPreview();
 });
 
 // ── Vacation helpers ──────────────────────────────────────────────────────────
@@ -1810,10 +1835,13 @@ async function saveSpending() {
     amount,
     date:       document.getElementById('sp-date').value || today(),
     notes:      document.getElementById('sp-notes').value.trim(),
+    currency:   document.getElementById('sp-currency').value,
     combined,
     item_count: combined ? parseInt(document.getElementById('sp-count').value)||1 : 1,
   };
-  await api('POST', '/api/spending', rec);
+  if (rec.currency !== 'USD') rec.original_amount = amount;
+  const res = await api('POST', '/api/spending', rec);
+  if (res && res.ok === false) { alert(res.error); return; }
   closeModal('modal-spending');
   clearSpendingForm();
   await fetchData();

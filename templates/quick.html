@@ -24,7 +24,14 @@
 
     <form id="quick-form">
       <label for="q-amount">Amount</label>
+      <div class="cur-toggle" role="group" aria-label="Currency">
+        <button type="button" data-cur="USD">$ USD</button>
+        <button type="button" data-cur="EUR">€ EUR</button>
+        <button type="button" data-cur="INR">₹ INR</button>
+        <button type="button" data-cur="DKK">kr DKK</button>
+      </div>
       <input id="q-amount" class="quick-amount" type="text" inputmode="decimal" placeholder="0.00" required autofocus>
+      <div id="q-fx" class="quick-fx"></div>
       <label for="q-cat">Category</label>
       <select id="q-cat"></select>
       <label for="q-notes">Notes</label>
@@ -45,6 +52,11 @@
 'use strict';
 let info = null;
 let book = localStorage.getItem('quickBook') === 'family' ? 'family' : 'personal';
+let currency = 'USD';
+try { currency = localStorage.getItem('quickCurrency') || 'USD'; } catch (e) {}
+let fx = null;  // {rates: {CUR: per 1 USD}, date, stale}
+const SYM = { USD: '$', EUR: '€', INR: '₹', DKK: 'kr' };
+const money = (n, cur) => cur === 'DKK' ? `${Number(n).toFixed(2)} kr` : `${SYM[cur] || cur + ' '}${Number(n).toFixed(2)}`;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -54,6 +66,27 @@ async function load() {
   info = await r.json();
   if (!$('q-date').value) $('q-date').value = info.today;
   render();
+}
+
+async function loadRates() {
+  try {
+    const r = await fetch('/api/fx-rates');
+    const res = await r.json();
+    fx = res.ok ? res : null;
+  } catch (e) { fx = null; }
+  renderFx();
+}
+
+// Live "≈ $x" preview; the server converts with the rate for the expense's date.
+function renderFx() {
+  document.querySelectorAll('.cur-toggle button').forEach(b => b.classList.toggle('active', b.dataset.cur === currency));
+  const el = $('q-fx');
+  if (currency === 'USD') { el.textContent = ''; return; }
+  if (!fx) { el.textContent = 'Exchange rate unavailable right now; it will be looked up when you save.'; return; }
+  const perUsd = fx.rates[currency];
+  const amt = parseFloat($('q-amount').value.replace(/,/g, '')) || 0;
+  const rate = `1 ${currency} = $${(1 / perUsd).toFixed(currency === 'INR' ? 5 : 4)} · ECB ${fx.date}${fx.stale ? ' (offline, last known)' : ''}`;
+  el.textContent = amt > 0 ? `≈ $${(amt / perUsd).toFixed(2)}  ·  ${rate}` : rate;
 }
 
 function render() {
@@ -66,7 +99,7 @@ function render() {
     <div class="quick-row">
       <div><div>${esc(e.category)}${e.notes ? ' · ' + esc(e.notes) : ''}</div>
       <div class="muted" style="font-size:12px">${esc(e.date)}${book === 'family' && e.added_by ? ' · ' + esc(e.added_by) : ''}</div></div>
-      <div style="color:var(--red)">$${Number(e.amount).toFixed(2)}</div>
+      <div style="color:var(--red);text-align:right">${e.currency ? `${money(e.original_amount, e.currency)}<div class="muted" style="font-size:12px">≈ $${Number(e.amount).toFixed(2)}</div>` : '$' + Number(e.amount).toFixed(2)}</div>
     </div>`).join('') : '<div class="muted">Nothing yet.</div>';
 }
 
@@ -76,6 +109,14 @@ document.querySelectorAll('.book-toggle button').forEach(btn => btn.addEventList
   render();
 }));
 
+document.querySelectorAll('.cur-toggle button').forEach(btn => btn.addEventListener('click', () => {
+  currency = btn.dataset.cur;
+  try { localStorage.setItem('quickCurrency', currency); } catch (e) {}
+  renderFx();
+  $('q-amount').focus();
+}));
+$('q-amount').addEventListener('input', renderFx);
+
 $('quick-form').addEventListener('submit', async ev => {
   ev.preventDefault();
   $('q-submit').disabled = true;
@@ -83,14 +124,14 @@ $('quick-form').addEventListener('submit', async ev => {
   try {
     const r = await fetch('/api/quick-add', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ book, amount: $('q-amount').value, category: $('q-cat').value,
+      body: JSON.stringify({ book, currency, amount: $('q-amount').value, category: $('q-cat').value,
                              notes: $('q-notes').value, date: $('q-date').value }),
     });
     if (r.status === 401) { location.href = '/login?next=/quick'; return; }
     const res = await r.json();
     status.className = 'quick-status ' + (res.ok ? 'ok' : 'err');
     status.textContent = res.ok ? '✓ ' + res.message : res.error;
-    if (res.ok) { $('q-amount').value = ''; $('q-notes').value = ''; await load(); }
+    if (res.ok) { $('q-amount').value = ''; $('q-notes').value = ''; await load(); renderFx(); }
   } catch (e) {
     status.className = 'quick-status err';
     status.textContent = 'Could not reach the server.';
@@ -99,7 +140,9 @@ $('quick-form').addEventListener('submit', async ev => {
   }
 });
 
+renderFx();
 load();
+loadRates();
 </script>
 </body>
 </html>
